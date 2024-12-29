@@ -1,6 +1,8 @@
 # sd-zfs-hook
 
-A standalone systemd ZFS hook for mkinitcpio, extracted from the archlinuxcn repository.
+A standalone systemd ZFS hook for mkinitcpio, built from the archlinuxcn repository.
+
+The `archlinuxcn` repo is the only org maintaining a `sd-zfs` module. However, their project is based on `linux-lts` and the module should be made available for all to use. Therefore, I created this repo to simplify the creation of just the module for others to use.
 
 ## Installation
 
