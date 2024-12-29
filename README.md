@@ -5,6 +5,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/lumnikemel/sd-zfs-hook)](https://github.com/lumnikemel/sd-zfs-hook/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/lumnikemel/sd-zfs-hook)](https://github.com/lumnikemel/sd-zfs-hook/issues)
 [![Arch Linux](https://img.shields.io/badge/arch-linux-1793D1?logo=arch-linux&logoColor=white)](https://aur.archlinux.org/packages/sd-zfs-hook)
+
 A standalone systemd ZFS hook for mkinitcpio, built from the archlinuxcn repository.
 
 The `archlinuxcn` repo is the only org maintaining a `sd-zfs` module. However, their project is based on `linux-lts` and the module should be made available for all to use. Therefore, I created this repo to simplify the creation of just the module for others to use.
