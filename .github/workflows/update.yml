@@ -3,7 +3,16 @@ name: Build and Release Package
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Allow manual triggers
+    paths:
+      - 'PKGBUILD'
+      - 'src/**'
+      # Add other relevant build files
+    paths-ignore:
+      - '*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/**'
+  workflow_dispatch:  # Keep manual trigger option
 
 jobs:
   build:
