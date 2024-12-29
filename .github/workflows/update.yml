@@ -1,0 +1,46 @@
+name: Build and Release Package
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: 
+      image: archlinux:base-devel
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git
+
+      # Create build user (makepkg can't be run as root)
+      - name: Create build user
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+
+      # Build package
+      - name: Build package
+        run: |
+          su builder -c 'makepkg -s --noconfirm'
+
+      # Create GitHub release
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        if: success()
+        with:
+          files: ./*.zst
+          tag_name: v${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
