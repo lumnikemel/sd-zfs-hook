@@ -6,7 +6,6 @@ arch=("any")
 url="https://github.com/lumnikemel/sd-zfs-hook"
 license=("CDDL-1.0")
 makedepends=()   # Empty since we don't need any build dependencies
-depends=('zfs')
 
 source=(
     "sd-zfs.initcpio.install::https://raw.githubusercontent.com/archlinuxcn/repo/master/archlinuxcn/zfs-linux-lts-poscat/sd-zfs.initcpio.install"
