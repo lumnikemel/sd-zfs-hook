@@ -7,11 +7,11 @@ on:
       - 'PKGBUILD'
       - 'src/**'
       # Add other relevant build files
-    paths-ignore:
-      - '*.md'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.github/**'
+    # paths-ignore:
+    #   - '*.md'
+    #   - 'LICENSE'
+    #   - '.gitignore'
+    #   - '.github/**'
   workflow_dispatch:  # Keep manual trigger option
 
 jobs:
