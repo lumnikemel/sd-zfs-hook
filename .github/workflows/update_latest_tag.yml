@@ -1,0 +1,35 @@
+name: Update Latest Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete latest tag
+        uses: dev-drprasad/delete-tag-and-release@v0.2.1
+        with:
+          tag_name: latest
+          delete_release: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download release asset
+        run: |
+          curl -L -o sd-zfs-hook-latest.pkg.tar.zst https://github.com/lumnikemel/sd-zfs-hook/releases/download/${{ github.event.release.tag_name }}/sd-zfs-hook-latest.pkg.tar.zst
+
+      - name: Update Latest Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: sd-zfs-hook-latest.pkg.tar.zst
+          tag_name: latest
+          name: Latest Release
+          body: |
+            This is always the latest release of sd-zfs-hook
+            Current version: ${{ github.event.release.tag_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

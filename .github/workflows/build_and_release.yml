@@ -42,7 +42,7 @@ jobs:
         run: |
           su builder -c 'PKGEXT=.pkg.tar.zst makepkg -sf --noconfirm'
 
-      # Test original package compression
+      # Test package compression
       - name: Test package compression
         run: |
           zstd -t *.pkg.tar.zst
@@ -52,18 +52,15 @@ jobs:
       - name: Create latest version copy
         run: |
           cp sd-zfs-hook-*.pkg.tar.zst sd-zfs-hook-latest.pkg.tar.zst
-          # Test the copy specifically
-          zstd -t sd-zfs-hook-latest.pkg.tar.zst
-          tar --zstd -tvf sd-zfs-hook-latest.pkg.tar.zst || exit 1
 
-      # Create GitHub release
+      # Create versioned release
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         if: success()
         with:
           files: |
-            sd-zfs-hook-[0-9]*.pkg.tar.zst    # Only matches versioned file
+            sd-zfs-hook-[0-9]*.pkg.tar.zst
             sd-zfs-hook-latest.pkg.tar.zst
           tag_name: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
