@@ -2,7 +2,7 @@ name: Update Latest Release
 
 on:
   release:
-    types: [published]
+    types: [published, released, created]  # Add more trigger types
   workflow_dispatch:
 
 permissions:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   update-latest:
     runs-on: ubuntu-latest
+    if: "!contains(github.ref, 'latest')"  # Prevent recursion
     steps:
       - name: Delete latest tag
         uses: dev-drprasad/delete-tag-and-release@v0.2.1
