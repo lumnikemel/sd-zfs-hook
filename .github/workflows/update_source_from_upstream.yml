@@ -1,0 +1,110 @@
+name: Update Source Files
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Check every 6 hours
+  workflow_dispatch:  # Manual trigger for testing
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Check and update files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure git
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          
+          # Function to check and update a file
+          update_file() {
+            local REPO=$1
+            local SOURCE_PATH=$2
+            local LOCAL_PATH=$3
+            
+            echo "Checking $SOURCE_PATH..."
+            
+            # Get file info from GitHub API with authentication
+            FILE_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                            "https://api.github.com/repos/$REPO/contents/$SOURCE_PATH")
+            
+            # Check if the API request was successful
+            if [[ $(echo "$FILE_INFO" | jq -r 'type') == "object" && ! $(echo "$FILE_INFO" | jq 'has("message")') ]]; then
+              UPSTREAM_SHA=$(echo "$FILE_INFO" | jq -r .sha)
+              DOWNLOAD_URL=$(echo "$FILE_INFO" | jq -r .content | base64 -d)
+              
+              # Verify we got valid data
+              if [[ -n "$UPSTREAM_SHA" && "$UPSTREAM_SHA" != "null" && -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
+                # Compare with local file's SHA
+                if [ -f "$LOCAL_PATH" ]; then
+                  LOCAL_CONTENT=$(cat "$LOCAL_PATH" | openssl sha1 -binary | base64)
+                  if [ "$LOCAL_CONTENT" = "$UPSTREAM_SHA" ]; then
+                    echo "No changes in $SOURCE_PATH"
+                    return 1
+                  fi
+                fi
+                
+                # If we got here, file has changed - download it
+                echo "Changes detected in $SOURCE_PATH, updating..."
+                mkdir -p "$(dirname "$LOCAL_PATH")"
+                echo "$DOWNLOAD_URL" > "$LOCAL_PATH"
+                
+                # Verify the update was successful
+                NEW_LOCAL_CONTENT=$(cat "$LOCAL_PATH" | openssl sha1 -binary | base64)
+                if [ "$NEW_LOCAL_CONTENT" = "$UPSTREAM_SHA" ]; then
+                  git add "$LOCAL_PATH"
+                  return 0  # File changed successfully
+                else
+                  echo "Error: SHA mismatch after update for $SOURCE_PATH"
+                  return 2
+                fi
+              fi
+            fi
+            
+            echo "Failed to get info for $SOURCE_PATH"
+            return 2  # Error occurred
+          }
+          
+          CHANGED=false
+          ERROR=false
+          
+          # Define file mappings
+          declare -A FILES=(
+            ["archlinuxcn/repo::parse-cmdline"]="src/parse-cmdline"
+            ["archlinuxcn/repo::archlinuxcn/zfs-linux-lts-poscat/sd-zfs.initcpio.install"]="src/sd-zfs.initcpio.install"
+            ["archlinuxcn/repo::archlinuxcn/zfs-linux-lts-poscat/zfs-root-generator"]="src/zfs-root-generator"
+            ["archlinuxcn/repo::archlinuxcn/zfs-linux-lts-poscat/zfs-set-env"]="src/zfs-set-env"
+          )
+          
+          # Process each file
+          for SOURCE_PATH in "${!FILES[@]}"; do
+            REPO=${SOURCE_PATH%%::*}
+            FILE_PATH=${SOURCE_PATH#*::}
+            LOCAL_PATH=${FILES[$SOURCE_PATH]}
+            
+            if update_file "$REPO" "$FILE_PATH" "$LOCAL_PATH"; then
+              case $? in
+                0) CHANGED=true ;;
+                2) ERROR=true ;;
+              esac
+            fi
+          done
+          
+          # If any files changed and no errors occurred, commit and push
+          if [ "$CHANGED" = true ] && [ "$ERROR" = false ]; then
+            git commit -m "Update source files from upstream
+            
+            Updated files from archlinuxcn repository
+            Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            git push
+          elif [ "$ERROR" = true ]; then
+            echo "::error::Some files failed to update properly"
+            exit 1
+          fi
