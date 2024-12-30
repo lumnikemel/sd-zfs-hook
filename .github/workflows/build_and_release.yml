@@ -23,6 +23,14 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm git zstd
 
+      # Copy source files to build directory
+      - name: Copy source files
+        run: |
+          cp src/sd-zfs.initcpio.install .
+          cp src/parse-cmdline .
+          cp src/zfs-set-env .
+          cp src/zfs-root-generator .
+
       # Create build user
       - name: Create build user
         run: |
@@ -40,7 +48,7 @@ jobs:
           zstd -t *.pkg.tar.zst
           tar --zstd -tvf *.pkg.tar.zst || exit 1
 
-      # Create latest version copy AFTER testing original
+      # Create latest version copy
       - name: Create latest version copy
         run: |
           cp sd-zfs-hook-*.pkg.tar.zst sd-zfs-hook-latest.pkg.tar.zst
