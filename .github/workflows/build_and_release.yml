@@ -6,13 +6,7 @@ on:
     paths:
       - 'PKGBUILD'
       - 'src/**'
-      # Add other relevant build files
-    # paths-ignore:
-    #   - '*.md'
-    #   - 'LICENSE'
-    #   - '.gitignore'
-    #   - '.github/**'
-  workflow_dispatch:  # Keep manual trigger option
+  workflow_dispatch:
 
 jobs:
   build:
@@ -23,13 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Install dependencies
+      # Install dependencies including zstd
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git
+          pacman -S --noconfirm git zstd
 
-      # Create build user (makepkg can't be run as root)
+      # Create build user
       - name: Create build user
         run: |
           useradd -m builder
@@ -38,7 +32,13 @@ jobs:
       # Build package
       - name: Build package
         run: |
-          su builder -c 'makepkg -s --noconfirm'
+          su builder -c 'PKGEXT=.pkg.tar.zst makepkg -sf --noconfirm'
+
+      # Test package compression
+      - name: Test package compression
+        run: |
+          zstd -t *.pkg.tar.zst
+          tar --zstd -tvf *.pkg.tar.zst || exit 1
 
       # Create GitHub release
       - name: Create Release
