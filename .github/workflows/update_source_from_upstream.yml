@@ -1,110 +1,120 @@
-name: Update Source Files
+name: Sync Files from archlinuxcn
 on:
   schedule:
     - cron: '0 */6 * * *'  # Check every 6 hours
-  workflow_dispatch:  # Manual trigger for testing
+  workflow_dispatch:  # Manual trigger
 
 permissions:
   contents: write
 
 jobs:
-  check-and-update:
+  sync-files:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-      
-      - name: Check and update files
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Sync Files
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Configure git
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          
-          # Function to check and update a file
-          update_file() {
-            local REPO=$1
-            local SOURCE_PATH=$2
-            local LOCAL_PATH=$3
+
+          # Function to get file content and SHA from GitHub API
+          fetch_github_file() {
+            local owner=$1
+            local repo=$2
+            local path=$3
+            local branch=$4
             
-            echo "Checking $SOURCE_PATH..."
+            response=$(curl -sL -H "Accept: application/vnd.github.v3+json" \
+                           -H "Authorization: token $GITHUB_TOKEN" \
+                           "https://api.github.com/repos/$owner/$repo/contents/$path?ref=$branch")
             
-            # Get file info from GitHub API with authentication
-            FILE_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                            "https://api.github.com/repos/$REPO/contents/$SOURCE_PATH")
-            
-            # Check if the API request was successful
-            if [[ $(echo "$FILE_INFO" | jq -r 'type') == "object" && ! $(echo "$FILE_INFO" | jq 'has("message")') ]]; then
-              UPSTREAM_SHA=$(echo "$FILE_INFO" | jq -r .sha)
-              DOWNLOAD_URL=$(echo "$FILE_INFO" | jq -r .content | base64 -d)
-              
-              # Verify we got valid data
-              if [[ -n "$UPSTREAM_SHA" && "$UPSTREAM_SHA" != "null" && -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
-                # Compare with local file's SHA
-                if [ -f "$LOCAL_PATH" ]; then
-                  LOCAL_CONTENT=$(cat "$LOCAL_PATH" | openssl sha1 -binary | base64)
-                  if [ "$LOCAL_CONTENT" = "$UPSTREAM_SHA" ]; then
-                    echo "No changes in $SOURCE_PATH"
-                    return 1
-                  fi
-                fi
-                
-                # If we got here, file has changed - download it
-                echo "Changes detected in $SOURCE_PATH, updating..."
-                mkdir -p "$(dirname "$LOCAL_PATH")"
-                echo "$DOWNLOAD_URL" > "$LOCAL_PATH"
-                
-                # Verify the update was successful
-                NEW_LOCAL_CONTENT=$(cat "$LOCAL_PATH" | openssl sha1 -binary | base64)
-                if [ "$NEW_LOCAL_CONTENT" = "$UPSTREAM_SHA" ]; then
-                  git add "$LOCAL_PATH"
-                  return 0  # File changed successfully
-                else
-                  echo "Error: SHA mismatch after update for $SOURCE_PATH"
-                  return 2
-                fi
-              fi
+            if [[ $(echo "$response" | jq -r 'type') != "object" ]] || [[ $(echo "$response" | jq 'has("message")') == "true" ]]; then
+              echo "Error fetching $path from $owner/$repo" >&2
+              echo "{}"
+              return 1
             fi
             
-            echo "Failed to get info for $SOURCE_PATH"
-            return 2  # Error occurred
+            echo "$response"
           }
-          
-          CHANGED=false
-          ERROR=false
-          
-          # Define file mappings
-          declare -A FILES=(
-            ["archlinuxcn/repo::parse-cmdline"]="src/parse-cmdline"
-            ["archlinuxcn/repo::archlinuxcn/zfs-linux-lts-poscat/sd-zfs.initcpio.install"]="src/sd-zfs.initcpio.install"
-            ["archlinuxcn/repo::archlinuxcn/zfs-linux-lts-poscat/zfs-root-generator"]="src/zfs-root-generator"
-            ["archlinuxcn/repo::archlinuxcn/zfs-linux-lts-poscat/zfs-set-env"]="src/zfs-set-env"
-          )
-          
-          # Process each file
-          for SOURCE_PATH in "${!FILES[@]}"; do
-            REPO=${SOURCE_PATH%%::*}
-            FILE_PATH=${SOURCE_PATH#*::}
-            LOCAL_PATH=${FILES[$SOURCE_PATH]}
+
+          # Function to update local file if different
+          update_file() {
+            local content=$1
+            local local_path=$2
             
-            if update_file "$REPO" "$FILE_PATH" "$LOCAL_PATH"; then
-              case $? in
-                0) CHANGED=true ;;
-                2) ERROR=true ;;
-              esac
+            # Create directory if it doesn't exist
+            mkdir -p "$(dirname "$local_path")"
+            
+            # Decode and save content
+            echo "$content" | base64 -d > "$local_path"
+            
+            # Add to git if changed
+            if git diff --quiet "$local_path"; then
+              return 1  # No changes
+            else
+              git add "$local_path"
+              return 0  # File changed
+            fi
+          }
+
+          # Define file mappings - format: "source_path::target_path"
+          files=(
+            "zfs-linux-lts-poscat/parse-cmdline::src/parse-cmdline"
+            "zfs-linux-lts-poscat/sd-zfs.initcpio.install::src/sd-zfs.initcpio.install"
+            "zfs-linux-lts-poscat/zfs-root-generator::src/zfs-root-generator"
+            "zfs-linux-lts-poscat/zfs-set-env::src/zfs-set-env"
+          )
+
+          changes=0
+          errors=0
+
+          # Process each file
+          for mapping in "${files[@]}"; do
+            source_path=${mapping%%::*}
+            target_path=${mapping#*::}
+            
+            echo "Processing $source_path -> $target_path"
+            
+            # Fetch file from archlinuxcn/repo
+            response=$(fetch_github_file "archlinuxcn" "repo" "$source_path" "master")
+            
+            if [[ $(echo "$response" | jq -r 'type') == "object" ]]; then
+              content=$(echo "$response" | jq -r '.content')
+              
+              if [[ -n "$content" && "$content" != "null" ]]; then
+                if update_file "$content" "$target_path"; then
+                  echo "Updated $target_path"
+                  ((changes++))
+                else
+                  echo "No changes needed for $target_path"
+                fi
+              else
+                echo "Error: Invalid content for $source_path"
+                ((errors++))
+              fi
+            else
+              echo "Error: Failed to fetch $source_path"
+              ((errors++))
             fi
           done
-          
-          # If any files changed and no errors occurred, commit and push
-          if [ "$CHANGED" = true ] && [ "$ERROR" = false ]; then
-            git commit -m "Update source files from upstream
+
+          # Commit and push if there are changes and no errors
+          if ((changes > 0)) && ((errors == 0)); then
+            git commit -m "chore: sync files from archlinuxcn/repo
+
+            Synced ${changes} file(s) from archlinuxcn/repo
+            Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             
-            Updated files from archlinuxcn repository
-            Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             git push
-          elif [ "$ERROR" = true ]; then
-            echo "::error::Some files failed to update properly"
+            echo "Successfully synced ${changes} file(s)"
+          elif ((errors > 0)); then
+            echo "::error::Encountered ${errors} error(s) during sync"
             exit 1
+          else
+            echo "No changes needed"
           fi
