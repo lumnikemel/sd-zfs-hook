@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Copy source files to build directory
+      - name: Prepare source files
+        run: |
+          cp src/* .
+
       # Install dependencies including zstd
       - name: Install dependencies
         run: |
