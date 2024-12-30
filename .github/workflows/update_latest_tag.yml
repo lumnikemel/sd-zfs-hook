@@ -3,6 +3,10 @@ name: Update Latest Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Add this line for write permissions
 
 jobs:
   update-latest:
@@ -33,3 +37,4 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

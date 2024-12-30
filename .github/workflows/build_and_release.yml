@@ -8,6 +8,10 @@ on:
       - 'src/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write  # Add this to allow triggering other workflows
+
 jobs:
   build:
     runs-on: ubuntu-latest
