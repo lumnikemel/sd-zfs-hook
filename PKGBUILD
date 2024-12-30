@@ -1,3 +1,4 @@
+# Maintainer: Lumnikemel <lumnikemel@github.com>
 pkgname="sd-zfs-hook"
 pkgver=1.0
 pkgrel=1
@@ -5,18 +6,23 @@ pkgdesc='A standalone systemd ZFS hook for mkinitcpio, extracted from the archli
 arch=("any")
 url="https://github.com/lumnikemel/sd-zfs-hook"
 license=("CDDL-1.0")
-makedepends=()   # Empty since we don't need any build dependencies
+makedepends=()   
 
+options=(zipman !strip)
+PKGEXT='.pkg.tar.zst'
+COMPRESSZST=(zstd -c -T0 -10 -)
+
+# Change the source to use local files from src directory
 source=(
-    "sd-zfs.initcpio.install::https://raw.githubusercontent.com/archlinuxcn/repo/master/archlinuxcn/zfs-linux-lts-poscat/sd-zfs.initcpio.install"
-    "parse-cmdline::https://raw.githubusercontent.com/archlinuxcn/repo/master/archlinuxcn/zfs-linux-lts-poscat/parse-cmdline"
-    "zfs-set-env::https://raw.githubusercontent.com/archlinuxcn/repo/master/archlinuxcn/zfs-linux-lts-poscat/zfs-set-env"
-    "zfs-root-generator::https://raw.githubusercontent.com/archlinuxcn/repo/master/archlinuxcn/zfs-linux-lts-poscat/zfs-root-generator"
+    "sd-zfs.initcpio.install"
+    "parse-cmdline"
+    "zfs-set-env"
+    "zfs-root-generator"
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
-    depends=('zfs')  # Runtime dependency on ZFS moved here
+    depends=('zfs')
 
     # Install the sd-zfs hook
     install -Dvm644 "${srcdir}"/sd-zfs.initcpio.install "${pkgdir}"/usr/lib/initcpio/install/sd-zfs
