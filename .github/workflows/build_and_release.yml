@@ -17,11 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # Copy source files to build directory
-      - name: Prepare source files
-        run: |
-          cp src/* .
-
       # Install dependencies including zstd
       - name: Install dependencies
         run: |
@@ -39,16 +34,19 @@ jobs:
         run: |
           su builder -c 'PKGEXT=.pkg.tar.zst makepkg -sf --noconfirm'
 
-      # After building, create a copy with "latest" name
-      - name: Create latest version copy
-        run: |
-          cp *.pkg.tar.zst sd-zfs-hook-latest.pkg.tar.zst
-          
-      # Test package compression
+      # Test original package compression
       - name: Test package compression
         run: |
           zstd -t *.pkg.tar.zst
           tar --zstd -tvf *.pkg.tar.zst || exit 1
+
+      # Create latest version copy AFTER testing original
+      - name: Create latest version copy
+        run: |
+          cp sd-zfs-hook-*.pkg.tar.zst sd-zfs-hook-latest.pkg.tar.zst
+          # Test the copy specifically
+          zstd -t sd-zfs-hook-latest.pkg.tar.zst
+          tar --zstd -tvf sd-zfs-hook-latest.pkg.tar.zst || exit 1
 
       # Create GitHub release
       - name: Create Release
@@ -57,7 +55,7 @@ jobs:
         if: success()
         with:
           files: |
-            *.pkg.tar.zst
+            sd-zfs-hook-*.pkg.tar.zst
             sd-zfs-hook-latest.pkg.tar.zst
           tag_name: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
