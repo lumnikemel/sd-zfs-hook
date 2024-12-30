@@ -63,7 +63,7 @@ jobs:
         if: success()
         with:
           files: |
-            sd-zfs-hook-*.pkg.tar.zst
+            sd-zfs-hook-[0-9]*.pkg.tar.zst    # Only matches versioned file
             sd-zfs-hook-latest.pkg.tar.zst
           tag_name: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
