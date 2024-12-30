@@ -64,10 +64,10 @@ jobs:
 
           # Define file mappings - format: "source_path::target_path"
           files=(
-            "zfs-linux-lts-poscat/parse-cmdline::src/parse-cmdline"
-            "zfs-linux-lts-poscat/sd-zfs.initcpio.install::src/sd-zfs.initcpio.install"
-            "zfs-linux-lts-poscat/zfs-root-generator::src/zfs-root-generator"
-            "zfs-linux-lts-poscat/zfs-set-env::src/zfs-set-env"
+            "archlinuxcn/zfs-linux-lts-poscat/parse-cmdline::src/parse-cmdline"
+            "archlinuxcn/zfs-linux-lts-poscat/sd-zfs.initcpio.install::src/sd-zfs.initcpio.install"
+            "archlinuxcn/zfs-linux-lts-poscat/zfs-root-generator::src/zfs-root-generator"
+            "archlinuxcn/zfs-linux-lts-poscat/zfs-set-env::src/zfs-set-env"
           )
 
           changes=0
