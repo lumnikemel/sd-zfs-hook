@@ -2,40 +2,94 @@ name: Update Latest Release
 
 on:
   release:
-    types: [published, released, created]  # Add more trigger types
+    types: [published]
   workflow_dispatch:
 
 permissions:
-  contents: write  # Add this line for write permissions
+  contents: write
 
 jobs:
   update-latest:
     runs-on: ubuntu-latest
-    if: "!contains(github.ref, 'latest')"  # Prevent recursion
+    container:
+      image: archlinux:base-devel
     steps:
-      - name: Delete latest tag
+      # Skip if this is already the latest release
+      - name: Check if this is latest release
+        if: github.event.release.tag_name == 'latest'
+        run: |
+          echo "This is already the latest release, skipping"
+          exit 0
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm curl jq pacman-contrib
+
+      - name: Delete existing latest tag/release
         uses: dev-drprasad/delete-tag-and-release@v0.2.1
         with:
           tag_name: latest
           delete_release: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
-      - name: Download release asset
+      - name: Download and recreate repository
         run: |
-          curl -L -o sd-zfs-hook-latest.pkg.tar.zst https://github.com/lumnikemel/sd-zfs-hook/releases/download/${{ github.event.release.tag_name }}/sd-zfs-hook-latest.pkg.tar.zst
+          # Create repo directory
+          mkdir -p repo-latest
+          
+          # Download the package from the versioned release
+          curl -L -o repo-latest/sd-zfs-hook-latest.pkg.tar.zst \
+            "https://github.com/lumnikemel/sd-zfs-hook/releases/download/${{ github.event.release.tag_name }}/sd-zfs-hook-latest.pkg.tar.zst"
+          
+          # Also download the original versioned package name for completeness
+          # Get the actual package name from the release
+          PACKAGE_NAME=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/lumnikemel/sd-zfs-hook/releases/tags/${{ github.event.release.tag_name }}" | \
+            jq -r '.assets[] | select(.name | test("sd-zfs-hook-[0-9].*\\.pkg\\.tar\\.zst$")) | .name')
+          
+          if [ "$PACKAGE_NAME" != "null" ] && [ -n "$PACKAGE_NAME" ]; then
+            curl -L -o "repo-latest/$PACKAGE_NAME" \
+              "https://github.com/lumnikemel/sd-zfs-hook/releases/download/${{ github.event.release.tag_name }}/$PACKAGE_NAME"
+          fi
+          
+          # Create repository database
+          cd repo-latest
+          repo-add sdzfshook.db.tar.xz *.pkg.tar.zst
+          
+          # Create convenience symlinks
+          ln -sf sdzfshook.db.tar.xz sdzfshook.db
+          ln -sf sdzfshook.files.tar.xz sdzfshook.files
+          
+          # List files for verification
+          ls -la
 
-      - name: Update Latest Release
+      - name: Create Latest Release
         uses: softprops/action-gh-release@v1
         with:
-          files: sd-zfs-hook-latest.pkg.tar.zst
+          files: repo-latest/*
           tag_name: latest
           name: Latest Release
           body: |
             This is always the latest release of sd-zfs-hook
             Current version: ${{ github.event.release.tag_name }}
+            
+            ## How to use this repository:
+            
+            Add to `/etc/pacman.conf`:
+            ```
+            [sdzfshook]
+            Server = https://github.com/lumnikemel/sd-zfs-hook/releases/download/latest
+            ```
+            
+            Then run:
+            ```bash
+            sudo pacman -Sy
+            sudo pacman -S sd-zfs-hook
+            ```
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
