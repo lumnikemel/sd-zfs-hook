@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: write
-  actions: write  # Added to trigger other workflows
+  actions: write
 
 jobs:
   sync-files:
@@ -14,6 +14,11 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
 
       - name: Sync Files
         id: sync
@@ -31,12 +36,30 @@ jobs:
             local path=$3
             local branch=$4
             
+            echo "Fetching $path from $owner/$repo@$branch" >&2
+            
             response=$(curl -sL -H "Accept: application/vnd.github.v3+json" \
                            -H "Authorization: token $GITHUB_TOKEN" \
                            "https://api.github.com/repos/$owner/$repo/contents/$path?ref=$branch")
             
-            if [[ $(echo "$response" | jq -r 'type') != "object" ]] || [[ $(echo "$response" | jq 'has("message")') == "true" ]]; then
-              echo "Error fetching $path from $owner/$repo" >&2
+            # Check if response is valid JSON
+            if ! echo "$response" | jq . >/dev/null 2>&1; then
+              echo "Error: Invalid JSON response for $path" >&2
+              echo "{}"
+              return 1
+            fi
+            
+            # Check if it's an error response
+            if echo "$response" | jq -e '.message' >/dev/null 2>&1; then
+              error_msg=$(echo "$response" | jq -r '.message')
+              echo "Error: API returned: $error_msg for $path" >&2
+              echo "{}"
+              return 1
+            fi
+            
+            # Check if content exists
+            if ! echo "$response" | jq -e '.content' >/dev/null 2>&1; then
+              echo "Error: No content field in response for $path" >&2
               echo "{}"
               return 1
             fi
@@ -49,17 +72,32 @@ jobs:
             local content=$1
             local local_path=$2
             
+            echo "Updating $local_path" >&2
+            
             # Create directory if it doesn't exist
             mkdir -p "$(dirname "$local_path")"
             
             # Decode and save content
-            echo "$content" | base64 -d > "$local_path"
+            if ! echo "$content" | base64 -d > "$local_path"; then
+              echo "Error: Failed to decode content for $local_path" >&2
+              return 2
+            fi
+            
+            # Check if file was actually created/updated
+            if [ ! -f "$local_path" ]; then
+              echo "Error: File $local_path was not created" >&2
+              return 2
+            fi
             
             # Add to git if changed
-            if git diff --quiet "$local_path"; then
+            git add "$local_path"
+            
+            # Check if git detected changes
+            if git diff --cached --quiet "$local_path"; then
+              echo "No changes detected for $local_path" >&2
               return 1  # No changes
             else
-              git add "$local_path"
+              echo "Changes detected for $local_path" >&2
               return 0  # File changed
             fi
           }
@@ -75,54 +113,76 @@ jobs:
           changes=0
           errors=0
           
+          echo "Starting file sync process..."
+          
           # Process each file
           for mapping in "${files[@]}"; do
             source_path=${mapping%%::*}
             target_path=${mapping#*::}
             
+            echo "=========================================="
             echo "Processing $source_path -> $target_path"
             
             # Fetch file from archlinuxcn/repo
-            response=$(fetch_github_file "archlinuxcn" "repo" "$source_path" "master")
-            
-            if [[ $(echo "$response" | jq -r 'type') == "object" ]]; then
+            if response=$(fetch_github_file "archlinuxcn" "repo" "$source_path" "master"); then
               content=$(echo "$response" | jq -r '.content')
               
               if [[ -n "$content" && "$content" != "null" ]]; then
-                if update_file "$content" "$target_path"; then
-                  echo "Updated $target_path"
-                  ((changes++))
-                else
-                  echo "No changes needed for $target_path"
-                fi
+                case $(update_file "$content" "$target_path") in
+                  0)
+                    echo "✓ Updated $target_path"
+                    ((changes++))
+                    ;;
+                  1)
+                    echo "✓ No changes needed for $target_path"
+                    ;;
+                  2)
+                    echo "✗ Error updating $target_path"
+                    ((errors++))
+                    ;;
+                esac
               else
-                echo "Error: Invalid content for $source_path"
+                echo "✗ Error: Invalid content for $source_path"
                 ((errors++))
               fi
             else
-              echo "Error: Failed to fetch $source_path"
+              echo "✗ Error: Failed to fetch $source_path"
               ((errors++))
             fi
           done
+          
+          echo "=========================================="
+          echo "Summary: $changes changes, $errors errors"
           
           # Output for next step
           echo "changes=$changes" >> $GITHUB_OUTPUT
           echo "errors=$errors" >> $GITHUB_OUTPUT
           
-          # Commit and push if there are changes and no errors
-          if ((changes > 0)) && ((errors == 0)); then
+          # Show git status for debugging
+          echo "Git status:"
+          git status --porcelain
+          
+          # Commit and push if there are changes
+          if ((changes > 0)); then
+            if ((errors > 0)); then
+              echo "::warning::Encountered $errors error(s) during sync, but proceeding with $changes successful change(s)"
+            fi
+            
+            echo "Committing changes..."
             git commit -m "chore: sync files from archlinuxcn/repo
             
-            Synced ${changes} file(s) from archlinuxcn/repo
+            Synced $changes file(s) from archlinuxcn/repo
+            Errors encountered: $errors
             Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             
+            echo "Pushing changes..."
             git push
-            echo "Successfully synced ${changes} file(s)"
+            echo "✓ Successfully synced $changes file(s)"
           elif ((errors > 0)); then
-            echo "::error::Encountered ${errors} error(s) during sync"
+            echo "::error::Encountered $errors error(s) during sync with no successful changes"
             exit 1
           else
-            echo "No changes needed"
+            echo "✓ No changes needed"
           fi
 
       # Trigger build if files were updated
@@ -133,4 +193,3 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: sync-triggered-build
           client-payload: '{"reason": "Files synced from archlinuxcn", "changes": "${{ steps.sync.outputs.changes }}"}'
-
