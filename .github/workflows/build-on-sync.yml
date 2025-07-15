@@ -1,0 +1,79 @@
+name: Build on Sync
+
+on:
+  repository_dispatch:
+    types: [sync-triggered-build]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: 
+      image: archlinux:base-devel
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install dependencies including zstd and pacman tools
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm git zstd pacman-contrib
+
+      # Copy source files to build directory
+      - name: Copy source files
+        run: |
+          cp src/sd-zfs.initcpio.install .
+          cp src/parse-cmdline .
+          cp src/zfs-set-env .
+          cp src/zfs-root-generator .
+
+      # Create build user
+      - name: Create build user
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+
+      # Build package
+      - name: Build package
+        run: |
+          su builder -c 'PKGEXT=.pkg.tar.zst makepkg -sf --noconfirm'
+
+      # Test package compression
+      - name: Test package compression
+        run: |
+          zstd -t *.pkg.tar.zst
+          tar --zstd -tvf *.pkg.tar.zst || exit 1
+
+      # Create repository structure for versioned release
+      - name: Create repository
+        run: |
+          mkdir -p repo
+          cp sd-zfs-hook-*.pkg.tar.zst repo/
+          cp sd-zfs-hook-*.pkg.tar.zst repo/sd-zfs-hook-latest.pkg.tar.zst
+          
+          cd repo
+          repo-add sdzfshook.db.tar.xz *.pkg.tar.zst
+          ln -sf sdzfshook.db.tar.xz sdzfshook.db
+          ln -sf sdzfshook.files.tar.xz sdzfshook.files
+
+      # Create release triggered by sync
+      - name: Create Sync Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            repo/*
+          tag_name: sync-v${{ github.run_number }}
+          name: Sync Release ${{ github.run_number }}
+          body: |
+            Automated release triggered by file sync from archlinuxcn/repo
+            
+            Changes: ${{ github.event.client_payload.changes }} file(s) updated
+            Reason: ${{ github.event.client_payload.reason }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

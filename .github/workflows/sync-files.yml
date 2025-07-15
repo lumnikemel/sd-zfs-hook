@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write  # Added to trigger other workflows
 
 jobs:
   sync-files:
@@ -15,13 +16,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Sync Files
+        id: sync
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Configure git
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-
+          
           # Function to get file content and SHA from GitHub API
           fetch_github_file() {
             local owner=$1
@@ -41,7 +43,7 @@ jobs:
             
             echo "$response"
           }
-
+          
           # Function to update local file if different
           update_file() {
             local content=$1
@@ -61,7 +63,7 @@ jobs:
               return 0  # File changed
             fi
           }
-
+          
           # Define file mappings - format: "source_path::target_path"
           files=(
             "archlinuxcn/zfs-linux-lts-poscat/parse-cmdline::src/parse-cmdline"
@@ -69,10 +71,10 @@ jobs:
             "archlinuxcn/zfs-linux-lts-poscat/zfs-root-generator::src/zfs-root-generator"
             "archlinuxcn/zfs-linux-lts-poscat/zfs-set-env::src/zfs-set-env"
           )
-
+          
           changes=0
           errors=0
-
+          
           # Process each file
           for mapping in "${files[@]}"; do
             source_path=${mapping%%::*}
@@ -102,11 +104,15 @@ jobs:
               ((errors++))
             fi
           done
-
+          
+          # Output for next step
+          echo "changes=$changes" >> $GITHUB_OUTPUT
+          echo "errors=$errors" >> $GITHUB_OUTPUT
+          
           # Commit and push if there are changes and no errors
           if ((changes > 0)) && ((errors == 0)); then
             git commit -m "chore: sync files from archlinuxcn/repo
-
+            
             Synced ${changes} file(s) from archlinuxcn/repo
             Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             
@@ -118,3 +124,13 @@ jobs:
           else
             echo "No changes needed"
           fi
+
+      # Trigger build if files were updated
+      - name: Trigger Build
+        if: steps.sync.outputs.changes > 0
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: sync-triggered-build
+          client-payload: '{"reason": "Files synced from archlinuxcn", "changes": "${{ steps.sync.outputs.changes }}"}'
+
