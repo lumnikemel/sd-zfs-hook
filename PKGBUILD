@@ -1,11 +1,18 @@
 # Maintainer: Lumnikemel <lumnikemel@github.com>
 pkgname="sd-zfs-hook"
 pkgver=1.0
-pkgrel=1
+pkgrel=2  # Bump this since we're fixing the dependencies
 pkgdesc='A standalone systemd ZFS hook for mkinitcpio, extracted from the archlinuxcn repository.'
 arch=("any")
 url="https://github.com/lumnikemel/sd-zfs-hook"
 license=("CDDL-1.0")
+depends=('mkinitcpio')  # Only depend on mkinitcpio since this is a hook
+optdepends=(
+    'zfs-dkms: ZFS kernel modules (DKMS version, recommended)'
+    'zfs-linux: ZFS kernel modules for linux kernel'
+    'zfs-linux-lts: ZFS kernel modules for linux-lts kernel'
+    'zfs-linux-hardened: ZFS kernel modules for linux-hardened kernel'
+)
 makedepends=()   
 
 options=(zipman !strip)
@@ -22,8 +29,6 @@ source=(
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
-    depends=('zfs')
-
     # Install the sd-zfs hook
     install -Dvm644 "${srcdir}"/sd-zfs.initcpio.install "${pkgdir}"/usr/lib/initcpio/install/sd-zfs
 
