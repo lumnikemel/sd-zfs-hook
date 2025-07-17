@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm git zstd pacman-contrib
+          pacman -S --noconfirm git zstd pacman-contrib mkinitcpio
 
       # Copy source files to build directory
       - name: Copy source files
